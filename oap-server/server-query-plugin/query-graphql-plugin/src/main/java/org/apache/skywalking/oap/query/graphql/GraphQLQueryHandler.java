@@ -18,8 +18,11 @@
 
 package org.apache.skywalking.oap.query.graphql;
 
-import com.linecorp.armeria.common.HttpRequest;
-import com.linecorp.armeria.common.HttpResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Strings;
+import com.linecorp.armeria.common.*;
+import com.linecorp.armeria.common.util.SafeCloseable;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.Blocking;
 import com.linecorp.armeria.server.annotation.Post;
@@ -27,10 +30,22 @@ import com.linecorp.armeria.server.graphql.GraphqlService;
 import graphql.analysis.MaxQueryComplexityInstrumentation;
 import graphql.schema.GraphQLSchema;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 public class GraphQLQueryHandler {
     private final GraphqlService graphqlService;
+
+    private static final ObjectMapper mapper = new ObjectMapper();
+
+    private static final TypeReference<Map<String, Object>> JSON_MAP =
+            new TypeReference<Map<String, Object>>() {};
+
+    private final Map<String,String> users=new HashMap<>();
 
     public GraphQLQueryHandler(
         final GraphQLQueryConfig config,
@@ -55,6 +70,44 @@ public class GraphQLQueryHandler {
     public HttpResponse graphql(
         final ServiceRequestContext ctx,
         final HttpRequest req) throws Exception {
+        RequestHeaders headers=req.headers();
+        String authorization=headers.get("Authorization");
+        if(StringUtils.isBlank(authorization)|| "null".equals(authorization)){
+            return HttpResponse.builder().unauthorized().build();
+        }else{
+            String user=users.get(authorization);
+            if(user==null){
+                return HttpResponse.builder().unauthorized().build();
+            }
+        }
         return graphqlService.serve(ctx, req);
+    }
+
+    @Blocking
+    @Post("/doLogin")
+    public HttpResponse login(
+            final ServiceRequestContext ctx,
+            final HttpRequest req) throws Exception {
+       return HttpResponse.from(req.aggregate(ctx.eventLoop()).thenApply(aggregatedHttpRequest -> {
+            try (SafeCloseable ignored = ctx.push()) {
+                final String body = aggregatedHttpRequest.contentUtf8();
+                if (Strings.isNullOrEmpty(body)) {
+                    return HttpResponse.of(HttpStatus.BAD_REQUEST, MediaType.PLAIN_TEXT,
+                            "Missing request body");
+                }
+                Map<String,Object> params= mapper.readValue(body, JSON_MAP);
+                String username=(String)params.get("username");
+                String password=(String)params.get("password");
+                if("admin".equals(username)&& "admin".equals(password)){
+                    String token=UUID.randomUUID().toString();
+                    users.put(token,"admin");
+                    return HttpResponse.builder().status(200).content(token).build();
+                }else{
+                    return HttpResponse.builder().status(403).content("账号密码错误").build();
+                }
+            }catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }));
     }
 }

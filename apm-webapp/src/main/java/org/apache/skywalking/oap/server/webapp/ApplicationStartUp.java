@@ -60,6 +60,7 @@ public class ApplicationStartUp {
             .builder()
             .port(port, SessionProtocol.HTTP)
             .service("/graphql", new OapProxyService(oapServices))
+            .service("/doLogin", new OapProxyService(oapServices))
             .service("/internal/l7check", HealthCheckService.of())
             .serviceUnder("/",
                 FileService.of(

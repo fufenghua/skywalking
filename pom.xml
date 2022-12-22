@@ -468,7 +468,8 @@
                         org/apache/skywalking/oap/server/exporter/grpc/*.java,
                         org/apache/skywalking/oap/server/configuration/service/*.java,
                         **/generated/*_jmhType*.java,
-                        **/generated/*_jmhTest.java
+                        **/generated/*_jmhTest.java,
+                        org/apache/skywalking/oap/query/graphql/**
                     </excludes>
                 </configuration>
                 <executions>
